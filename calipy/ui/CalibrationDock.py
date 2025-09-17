@@ -61,7 +61,7 @@ class CalibrationDock(QDockWidget):
         for index, (id, result) in enumerate(stats.items()):
             self.set_calibration_table(index, 0, id)
             self.set_calibration_table(index, 1, f"{result['single_estimations']} / {result['detections']}")
-            self.set_calibration_table(index, 2, f"_ / {result['error']:.2f} / _")
+            self.set_calibration_table(index, 2, f"_ / _ / _")
             if 'system_errors' in result:
                 self.set_calibration_table(index, 3, "{:.2f} / {:.2f} / {:.2f}".format(*result['system_errors']))
             if 'system_frame_errors' in result:

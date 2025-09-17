@@ -31,7 +31,7 @@ def main():
                         help="Default true, loads from 'calib_file',"
                              "or provide list of detections to load,"
                              "or set to false to not load detections.")
-    parser.add_argument("--load_calibration_single", type=str, required=False, nargs='*', default=['true'],
+    parser.add_argument("--load_calibrations_single", type=str, required=False, nargs='*', default=['true'],
                         help="Default true, loads from 'calib_file',"
                              "or provide list of calibration_single to load,"
                              "or set to false to not load single camera calibrations.")
@@ -85,13 +85,15 @@ def main():
             gui.context.load_detections(config.load_detections)
 
     # Single Calibrations
-    load_calibration_single_from_calib = True
-    if config.load_calibration_single[0] != 'true':
-        load_calibration_single_from_calib = False
-        if config.load_calibration_single[0] == 'false':
+    load_calibrations_single_from_calib = True
+    if config.load_calibrations_single[0] != 'true':
+        load_calibrations_single_from_calib = False
+        if config.load_calibrations_single[0] == 'false':
             logger.log(logging.INFO, "Not loading single camera calibrations")
         else:
-            gui.on_load_calibration_single(config.load_calibration_single)
+            gui.context.load_calibrations_single(
+                gui.context.read_yml_files(config.load_calibrations_single)
+            )
 
     # Multicamera Calibrations
     if config.calib_file[0] is not None:
@@ -99,7 +101,7 @@ def main():
             logger.log(logging.INFO, "Attempting to load recordings from calibration file")
         gui.on_load_calib(file=config.calib_file[0], load_recordings=not recs_provided,
                           load_detections=load_detections_from_calib,
-                          load_calibration_single=load_calibration_single_from_calib)
+                          load_calibrations_single=load_calibrations_single_from_calib)
     else:
         logger.log(logging.INFO, "No calibration file provided")
 

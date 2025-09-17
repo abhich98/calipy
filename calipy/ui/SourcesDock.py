@@ -100,17 +100,15 @@ class SourcesDock(QDockWidget):
             QMessageBox.critical(self, "No session selected", "Please select a session first.")
             return
 
-        cameras = self.context.get_cameras() # TODO: change it to get recordings. Each session has a list of recordings
-        cam_id = len(cameras)
         path = QFileDialog.getOpenFileName(
                 self,
-                f"Open Recording - {cam_id}",
+                f"Open Recording",
                 "",
                 "Video File (*.MP4 *.mp4 *.ccv);;All files (*.*)"
             )[0]
 
         if path:
-            self.context.add_recording(cam_id, path, )
+            self.context.add_recording(path)
             self.update_sources()
             self.sources_modified.emit()
 

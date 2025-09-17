@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, self.dock_time)
 
         self.dock_sessions = ui.SourcesDock(context)
-        self.dock_sessions.sources_modified.connect(self.sync_subwindows_sources)
+        self.dock_sessions.sources_modified.connect(self.sync_subwindows_cameras)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock_sessions)
 
         self.dock_detection = ui.DetectionDock(context)
@@ -72,12 +72,10 @@ class MainWindow(QMainWindow):
             logger.log(logging.WARNING, f"{file}: unrecognised file!")
 
         self.setWindowTitle(file)
-        self.dock_cameras.update_cameras()
         self.dock_sessions.update_sources()
         self.dock_time.update_subsets()
 
         self.sync_subwindows_cameras()
-        self.sync_subwindows_sources()
 
     def open_videos(self, videos, pipelines=None):
         self.context.add_session()
@@ -85,18 +83,16 @@ class MainWindow(QMainWindow):
             pipeline = None
             if pipelines is not None:
                 pipeline = pipelines[i] if len(pipelines[i]) else None
-            self.context.add_recording(str(i), rec, pipeline=pipeline)
+            self.context.add_recording(rec, pipeline=pipeline)
 
         self.dock_sessions.update_sources()
-#        self.dock_time.update_subsets()
+        self.dock_time.update_subsets()
 
-#        self.sync_subwindows_cameras()
-#        self.sync_subwindows_sources()
+        self.sync_subwindows_cameras()
 
     def on_cameras_change(self):
         """ Helper to update UI on camera changes """
         self.dock_sessions.update_sources()
-        self.sync_subwindows_cameras()
 
     def on_timeline_change(self):
         self.update_subwindows()
@@ -109,7 +105,7 @@ class MainWindow(QMainWindow):
     def sync_subwindows_cameras(self):
         """ Create or destroy windows based on available cameras """
         win_ids = list(self.subwindows.keys())
-        cam_ids = [cam.id for cam in self.context.get_cameras()]
+        cam_ids = self.context.get_current_cam_ids()
 
         # Close obsolete views
         for id in win_ids:
@@ -123,13 +119,20 @@ class MainWindow(QMainWindow):
                 window = ui.FrameWindow(self.context, id)
                 self.mdi.addSubWindow(window.subwindow)
                 self.subwindows[id] = window
+                window.show()
 
         # Update time control
         self.update_timeline_dock()
 
         # Reload current frame
         self.update_subwindows()
+        self.mdi.tileSubWindows()
 
+        # Update list of detections and calibrations (e.g., on session select)
+        self.dock_detection.update_result()
+        self.dock_calibration.update_result()
+
+    @DeprecationWarning
     def sync_subwindows_sources(self):
         """" Show or hide subwindows based on available data """
         # Reset frame index if now invalid
@@ -197,7 +200,6 @@ class MainWindow(QMainWindow):
         """ MenuiBar > Camera System > Clear """
         if QMessageBox.question(self, "Clear Session?", "All unsaved changes will be lost!") == QMessageBox.Yes:
             self.context.clear()
-            self.dock_cameras.update_cameras()
             self.dock_sessions.update_sources()
             self.dock_time.update_subsets()
             self.sync_subwindows_cameras()
@@ -208,7 +210,7 @@ class MainWindow(QMainWindow):
 
     # Result Menu Callbacks
 
-    def on_load_calib(self, file: str = None, load_recordings=False, load_detections=True, load_calibration_single=True):
+    def on_load_calib(self, file: str = None, load_recordings=False, load_detections=True, load_calibrations_single=True):
         """ MenuBar > Result > Load Calib """
         """ Loads multicamera malibration from calibcam. Also other calibration results supported."""
 
@@ -240,9 +242,9 @@ class MainWindow(QMainWindow):
                 det_files = [result_dir / det for det in calib_dict['info']['opts']['detection']]
                 self.context.load_detections(det_files) # Detection object can read data from files
 
-            if load_calibration_single:
+            if load_calibrations_single:
                 sin_calib_files = [str(result_dir / sc) for sc in calib_dict['info']['opts']['calibration_single']]
-                self.context.load_calibration_single(self.context.read_yml_files(sin_calib_files))
+                self.context.load_calibrations_single(self.context.read_yml_files(sin_calib_files))
 
             boards_file = str(result_dir / 'multicam_calibration_board_positions.yml')
             self.context.load_calibration_multicam(calibcam_dict=calib_dict,

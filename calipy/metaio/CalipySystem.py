@@ -23,7 +23,7 @@ class CalipySystem(yaml.YAMLObject):
 
     def add_session(self, session_id=None):
         if session_id is None:
-            session_id = str(len(self.sessions))
+            session_id = f"sess_{len(self.sessions)}"
 
         self.sessions.append(Session(session_id))
         return self.sessions[-1]

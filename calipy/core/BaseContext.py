@@ -93,16 +93,26 @@ class BaseContext:
 
     # Recordings
 
-    def add_recording(self, id_str, path, pipeline=None):
+    def add_recording(self, path, pipeline=None, id_str=None):
         """ Add recording to current session """
         if not self.session:
             return
+
+        if id_str is None:
+            id_str = f"cam_{len(self.vid_readers)}"
 
         if id_str in self.vid_readers:
             del self.vid_readers[id_str]
 
         rec = self.session.add_recording(id_str, path, None, pipeline=pipeline)
         self.vid_readers[id_str] = rec.init_reader()
+
+    def get_current_cam_ids(self):
+        """ Get all available camera ids """
+        if not self.session:
+            return []
+
+        return list(self.session.recordings.keys())
 
     def remove_recording(self, id):
         """ Remove recording from current session """
