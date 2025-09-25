@@ -10,11 +10,9 @@ from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation as R  # noqa
 
 from calibcamlib.yaml_helper import collection_to_array
-from calibcamlib import Camerasystem
-from calibcam.detection import Detections
-from calibcam.board import Board
+from calibcamlib import Camerasystem, Board, Detections
 
-from calipy import detect, calib, VERSION
+from calipy import VERSION
 from .BaseContext import BaseContext
 
 logger = logging.getLogger(__name__)
@@ -42,8 +40,8 @@ class CalibrationContext(BaseContext):
                                     #  session_id > cam_id > 'errors' > {max, med, mean}
 
         # Assumed single source for each camera
-        self.estimations_boards = {}  # session_id > 'poses' > frm_idx > { rvec_board: vec3, tvec_board: vec3 }
-                                    # session_id > cam_idx > 'errors' > frm_idx > {max, med, mean}
+        self.estimations_boards = {}  # session_id > cam_id > 'poses' > frm_idx > { rvec: vec3, tvec: vec3 }
+                                    # session_id > cam_id > 'errors' > frm_idx > {max, med, mean}
 
         self.other = {}
 
@@ -81,6 +79,7 @@ class CalibrationContext(BaseContext):
 
         frame = frame.copy()
         sensor_offset = self.get_sensor_offset(cam_id)
+        sensor_offset = np.asarray(sensor_offset)[np.newaxis, :]
         cam_idx = self.get_current_cam_ids().index(cam_id)
 
         # Make sure we draw in color by converting the frame to color first if necessary
@@ -108,15 +107,17 @@ class CalibrationContext(BaseContext):
         else:
             # TODO: check the order of transformations!
             calibration_cs = self.get_current_calibrations_multi().get('cs', None)
-            estimation = self.get_current_estimations_boards().get('poses', {}).get(self.frame_index, None)
+            estimation = self.get_current_estimations_boards().get(cam_id, {}).get('poses', {})
+            estimation = estimation.get(self.frame_index, None)
 
-        if calibration_cs is None and estimation is None:
+        if calibration_cs is None or estimation is None:
             return frame
 
         coords_cam = R.from_rotvec(estimation['rvec']).apply(board_points) + estimation['tvec']
-        img_points =  calibration_cs.project(coords_cam, offsets=np.asarray(sensor_offset), cam_idx=cam_idx)
+        img_points =  calibration_cs.project(coords_cam, offsets=sensor_offset, cam_idx=cam_idx)
         for point in img_points:
-            cv2.drawMarker(frame, (int(point[0]), int(point[1])), (0, 0, 255))
+            if not np.all(np.isnan(point)):
+                cv2.drawMarker(frame, (int(point[0]), int(point[1])), (0, 0, 255))
 
         return frame
 
@@ -147,6 +148,43 @@ class CalibrationContext(BaseContext):
 
     # Overall result management
 
+    def get_calipy_calibcam_indexes(self, calibcam_rec_files: list[str]):
+        """
+        Matches the recordings loaded into the calipy gui with recordings in the calibcam file.
+        :param calibcam_rec_files:
+        :return: indic that match with the recordings loaded into the calipy gui
+        """
+        if not self.session:
+            return []
+
+        def get_path(path:str):
+            if "\\" in path:
+                return PureWindowsPath(path)
+            else:
+                return Path(path)
+
+        # Generally, all the videos in a session have different names.
+        # In case the videos have the same names, identification is set to be based on the dir containing the video.
+        # Identifying the unique parts in the path to the videos, which will be used to match with the available videos.
+        calibcam_rec_file_parts = [list(get_path(file).parts) for file in calibcam_rec_files]
+        unique_idx = -1  # from left to right, the first part that is not unique is the unique part
+        for unique_idx in range(1, len(calibcam_rec_file_parts[0])):
+            part_list = [parts[-unique_idx] for parts in calibcam_rec_file_parts]
+            if len(part_list) == len(set(part_list)):
+                logger.log(logging.INFO, f"Unique parts in file names: {part_list}")
+                unique_idx *= -1
+                break
+        calibcam_rec_unique_names = [parts[unique_idx] for parts in calibcam_rec_file_parts]
+
+        calipy_rec_unique_names = []
+        for cam_id, rec in self.session.recordings.items():
+            calipy_rec_unique_names.append(get_path(rec.url).parts[unique_idx])
+
+        calibcam_indexes = [calibcam_rec_unique_names.index(name) for name in calipy_rec_unique_names
+                                   if name in calibcam_rec_unique_names]
+
+        return calibcam_indexes
+
     def load_detections(self, detection_files: list[str] or str):
         if self.session is None:
             return
@@ -173,7 +211,7 @@ class CalibrationContext(BaseContext):
         self.estimations_single[sess_id] = {}
         for cam_id, calib_dict in zip(self.get_current_cam_ids(), calibrations_single):
             poses = {}
-            for index, frame_idx in enumerate(calib_dict['frame_idxs']):
+            for index, frame_idx in enumerate(calib_dict['detection_idxs']):
                 poses[frame_idx] = {
                     'rvec': calib_dict['rvecs'][index],
                     'tvec': calib_dict['tvecs'][index],
@@ -182,23 +220,18 @@ class CalibrationContext(BaseContext):
                 'poses': poses,
             }
 
-    def load_calibration_multicam(self, calibcam_dict: dict, boards_dict: dict):
+    def load_calibration_multicam(self, calibcam_dict: dict, boards_dict: dict, calibcam_cam_indexes: list or None = None):
         """ Read calibration info from calibcam dict, only if the corresponding recordings are already loaded """
         if not self.session:
             return
 
         logger.log(logging.INFO,
                    f"Current software version: {VERSION}, Calibcam file version: {calibcam_dict.get('version', None)}.")
-        assert calibcam_dict.get('version', 0) >= 3, "Calibration file version mismatch!"
 
-        def get_path(path:str):
-            if "\\" in path:
-                return PureWindowsPath(path)
-            else:
-                return Path(path)
+        if calibcam_cam_indexes is None:
+            calibcam_cam_indexes = self.get_calipy_calibcam_indexes(calibcam_dict['info']['rec_file_names'])
 
-        calibcam_rec_file_names = calibcam_dict['rec_file_names']
-        calibcam_board_params = calibcam_dict['board_params']
+        calibcam_board_params = calibcam_dict['info']['board_params']
         calibcam_calibs = calibcam_dict['calibs']
 
         boards_dict = collection_to_array(boards_dict)
@@ -206,26 +239,13 @@ class CalibrationContext(BaseContext):
         board_tvecs = boards_dict['tvecs']
         frame_idxs_cams = boards_dict['frame_idxs']
         frame_idxs = np.unique(frame_idxs_cams).tolist()
-        frame_idxs.remove(-1) # -1 used a filler value instead of nan
-
-        # Generally, all the videos in a session have different names.
-        # In case the videos have the same names, identification is set to be based on the dir containing the video.
-        # Identifying the unique parts in the path to the videos, which will be used to match with the available videos.
-        rec_file_name_parts = [list(get_path(file).parts) for file in calibcam_rec_file_names]
-        unique_idx = -1 # from left to right, the first part that is not unique is the unique part
-        for unique_idx in range(1, len(rec_file_name_parts[0])):
-            part_list = [parts[-unique_idx] for parts in rec_file_name_parts]
-            if len(part_list) == len(set(part_list)):
-                logger.log(logging.INFO, f"Unique parts in file names: {part_list}")
-                unique_idx *= -1
-                break
-        calibcam_rec_unique_names = [parts[unique_idx] for parts in rec_file_name_parts]
+        frame_idxs.remove(-1) # -1 used as filler value instead of nan
 
         # Error from final calibration
         final_err_shape = (*frame_idxs_cams.shape,
                            len(Board(calibcam_board_params[0]).get_board_ids()), 2)
-        if 'fun_final' in calibcam_dict['info']:
-            final_err = np.asarray(calibcam_dict['info']['fun_final']).reshape(final_err_shape)
+        if 'fun_final' in boards_dict['info']:
+            final_err = np.asarray(boards_dict['info']['fun_final']).reshape(final_err_shape)
             final_err = np.abs(final_err)
         else:
             final_err = np.empty(final_err_shape)
@@ -237,47 +257,42 @@ class CalibrationContext(BaseContext):
         self.calibrations_multi[sess_id] = {
             "cs": None,
         }
-        self.estimations_boards[sess_id] = {
-            "poses": {},
-        }
+        self.estimations_boards[sess_id] = {}
 
         # Set data
-        for index, frm_idx in enumerate(frame_idxs):
-            self.estimations_boards[sess_id]['poses'][frm_idx] = {
-                'rvec': board_rvecs[index],
-                'tvec': board_tvecs[index],
+
+        for cam_id, calibcam_cam_idx in zip(self.session.recordings.keys(), calibcam_cam_indexes):
+
+            calibs.append(calibcam_calibs[calibcam_cam_idx])
+
+            self.boards[sess_id][cam_id] = Board(calibcam_board_params[calibcam_cam_idx])
+
+            self.calibrations_multi[sess_id][cam_id] = {}
+            self.calibrations_multi[sess_id][cam_id]['errors'] = {
+                'max': np.nanmax(final_err[calibcam_cam_idx]),
+                'med': np.nanmedian(final_err[calibcam_cam_idx]),
+                'mean': np.nanmean(final_err[calibcam_cam_idx]),
             }
 
-        for cam_id, rec in self.session.recordings.items():
-            rec_unique_name = get_path(rec.url).parts[unique_idx]
-            if rec_unique_name in calibcam_rec_unique_names:
-                calibcam_cam_idx = calibcam_rec_unique_names.index(rec_unique_name)
+            frame_idxs_cam = frame_idxs_cams[calibcam_cam_idx]
+            self.estimations_boards[sess_id][cam_id] = {'errors': {}, 'poses': {}}
+            for index, frm_idx in enumerate(frame_idxs_cam):
+                if frm_idx != -1:
+                    self.estimations_boards[sess_id][cam_id]['poses'][frm_idx] = {
+                        'rvec': board_rvecs[index],
+                        'tvec': board_tvecs[index],
+                    }
+                    self.estimations_boards[sess_id][cam_id]['errors'][frm_idx] = {
+                        'max': np.nanmax(
+                              final_err[calibcam_cam_idx, index]),
+                        'med': np.nanmedian(
+                              final_err[calibcam_cam_idx, index]),
+                        'mean': np.nanmean(
+                              final_err[calibcam_cam_idx, index])
+                    }
 
-                calibs.append(calibcam_calibs[calibcam_cam_idx])
-
-                self.boards[sess_id][cam_id] = Board(calibcam_board_params[calibcam_cam_idx])
-
-                self.calibrations_multi[sess_id][cam_id] = {}
-                self.calibrations_multi[sess_id][cam_id]['errors'] = {
-                    'max': np.nanmax(final_err[calibcam_cam_idx]),
-                    'med': np.nanmedian(final_err[calibcam_cam_idx]),
-                    'mean': np.nanmean(final_err[calibcam_cam_idx]),
-                }
-
-                frame_idxs_cam = frame_idxs_cams[calibcam_cam_idx]
-                self.estimations_boards[sess_id][cam_id] = {'errors': {}}
-                for index, frm_idx in enumerate(frame_idxs_cam):
-                    if frm_idx != -1:
-                        self.estimations_boards[sess_id][cam_id]['errors'][frm_idx] = {
-                            'max': np.nanmax(
-                                  final_err[calibcam_cam_idx, index]),
-                            'med': np.nanmedian(
-                                  final_err[calibcam_cam_idx, index]),
-                            'mean': np.nanmean(
-                                  final_err[calibcam_cam_idx, index])
-                        }
         # Multi camera calibration
-        multicam_cs = Camerasystem.from_calibs(collection_to_array(calibcam_calibs))
+        multicam_cs = Camerasystem.from_calibs(collection_to_array(calibs))
         self.calibrations_multi[sess_id]["cs"] = multicam_cs
 
     def clear_result(self):
@@ -345,14 +360,13 @@ class CalibrationContext(BaseContext):
 
     def plot_system_calibration_errors(self):
 
-        calibrations = self.get_current_calibrations_single()
         estimations_board = self.get_current_estimations_boards()
 
-        fig, axs = plt.subplots(len(calibrations.keys()), sharex=True)
+        fig, axs = plt.subplots(len(estimations_board.keys()), sharex=True)
         if not isinstance(axs, np.ndarray):
             axs = [axs]
-        for i, (cam_id, calibration) in enumerate(calibrations.items()):
-            estimations_cam = estimations_board.get(cam_id, {})
+        for i, (cam_id, estimations_cam) in enumerate(estimations_board.items()):
+            estimations_cam = estimations_cam['errors']
             frames_cam = []
             errors_cam = [[] for _ in range(3)]
             for frame_idx, estimation in estimations_cam.items():

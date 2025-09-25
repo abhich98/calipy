@@ -17,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser(prog="CaliPy")
 
     # Positional arguments
-    parser.add_argument('--recordings', type=str, required=False, nargs='*', default=[None],
+    parser.add_argument('--videos', type=str, required=False, nargs='*', default=[None],
                         help="Give a calipy system file (*.system.yml) recording file paths"
                              "or recording files directly.")
     parser.add_argument('--pipelines', type=str, required=False, nargs='*', default=[None],
@@ -53,12 +53,12 @@ def main():
 
     # Recordings
     recs_provided = False
-    if isinstance(config.recordings[0], str):
-        if config.recordings[0].endswith(".system.yml"):
-            gui.open(config.recordings[0])
+    if isinstance(config.videos[0], str):
+        if config.videos[0].endswith(".system.yml"):
+            gui.open(config.videos[0])
             recs_provided = True
         else:
-            rec_file_names = config.recordings
+            rec_file_names = config.videos
             if config.pipelines[0] is None:
                 rec_pipelines = None
             elif len(config.pipelines) == len(rec_file_names):
