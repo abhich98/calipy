@@ -185,7 +185,7 @@ class CalibrationContext(BaseContext):
 
         return calibcam_indexes
 
-    def load_detections(self, detection_files: list[str] or str):
+    def load_detections(self, detection_files: list[str]):
         if self.session is None:
             return
         # It is assumed that files are provided in the order of existing/loaded recordings
@@ -220,7 +220,7 @@ class CalibrationContext(BaseContext):
                 'poses': poses,
             }
 
-    def load_calibration_multicam(self, calibcam_dict: dict, boards_dict: dict, calibcam_cam_indexes: list or None = None):
+    def load_calibration_multicam(self, calibcam_dict: dict, boards_dict: dict, calibcam_cam_indexes: list | None = None):
         """ Read calibration info from calibcam dict, only if the corresponding recordings are already loaded """
         if not self.session:
             return
@@ -238,12 +238,10 @@ class CalibrationContext(BaseContext):
         board_rvecs = boards_dict['rvecs']
         board_tvecs = boards_dict['tvecs']
         frame_idxs_cams = boards_dict['frame_idxs']
-        frame_idxs = np.unique(frame_idxs_cams).tolist()
-        frame_idxs.remove(-1) # -1 used as filler value instead of nan
 
         # Error from final calibration
         final_err_shape = (*frame_idxs_cams.shape,
-                           len(Board(calibcam_board_params[0]).get_board_ids()), 2)
+                           len(Board(calibcam_board_params[0]).get_corner_ids()), 2)
         if 'fun_final' in boards_dict['info']:
             final_err = np.asarray(boards_dict['info']['fun_final']).reshape(final_err_shape)
             final_err = np.abs(final_err)

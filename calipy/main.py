@@ -99,6 +99,7 @@ def main():
     if config.calib_file[0] is not None:
         if not recs_provided:
             logger.log(logging.INFO, "Attempting to load recordings from calibration file")
+        gui.setWindowTitle(config.calib_file[0])
         gui.on_load_calib(file=config.calib_file[0], load_recordings=not recs_provided,
                           load_detections=load_detections_from_calib,
                           load_calibrations_single=load_calibrations_single_from_calib)

@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
             self.context.save(file)
 
     def on_system_clear(self):
-        """ MenuiBar > Camera System > Clear """
+        """ MenuBar > Camera System > Clear """
         if QMessageBox.question(self, "Clear Session?", "All unsaved changes will be lost!") == QMessageBox.Yes:
             self.context.clear()
             self.dock_sessions.update_sources()
@@ -205,7 +205,7 @@ class MainWindow(QMainWindow):
             self.sync_subwindows_cameras()
 
     def on_quit(self):
-        """ MenuiBar > Camera System > Quit """
+        """ MenuBar > Camera System > Quit """
         self.close()
 
     # Result Menu Callbacks
@@ -248,6 +248,10 @@ class MainWindow(QMainWindow):
                                  for i_cam, _ in enumerate(self.context.get_current_cam_ids())]
                 else:
                     det_files = [result_dir / det for det in calib_dict['info']['opts']['detection']]
+
+                logger.log(logging.INFO, f"LOADING DETECTIONS")
+                for i in calibcam_cam_indexes:
+                    logger.log(logging.INFO, f"Loading file: {det_files[i]}")
                 self.context.load_detections([det_files[i] for i in calibcam_cam_indexes]) # Detection object can read data from files
 
             if load_calibrations_single:
@@ -256,6 +260,10 @@ class MainWindow(QMainWindow):
                                        for i_cam, _ in enumerate(self.context.get_current_cam_ids())]
                 else:
                     sin_calib_files = [str(result_dir / sc) for sc in calib_dict['info']['opts']['calibration_single']]
+
+                logger.log(logging.INFO, f"LOADING SINGLE CALIBRATIONS")
+                for i in calibcam_cam_indexes:
+                    logger.log(logging.INFO, f"Loading file: {sin_calib_files[i]}")
                 self.context.load_calibrations_single(self.context.read_yml_files(
                     [sin_calib_files[i] for i in calibcam_cam_indexes])
                 )
