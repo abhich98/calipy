@@ -55,8 +55,10 @@ class CalibrationContext(BaseContext):
         # Add detections as subsets
         detections = self.get_current_detections()
         if not detections.is_empty():
-            det_idxs = detections.to_array()['detection_idxs']
-            subsets['Detections'] = sorted(det_idxs)
+            det_idxs = detections.to_array()['frame_idxs'].flatten()
+            det_idxs = sorted(set(det_idxs))
+            det_idxs.remove(-1) # -1 is placed in the array instead of nan!
+            subsets['Detections'] = det_idxs
 
         # Add estimations as subsets
         estimations = self.get_current_estimations_single()
@@ -211,7 +213,7 @@ class CalibrationContext(BaseContext):
         self.estimations_single[sess_id] = {}
         for cam_id, calib_dict in zip(self.get_current_cam_ids(), calibrations_single):
             poses = {}
-            for index, frame_idx in enumerate(calib_dict['detection_idxs']):
+            for index, frame_idx in enumerate(calib_dict['frame_idxs']):
                 poses[frame_idx] = {
                     'rvec': calib_dict['rvecs'][index],
                     'tvec': calib_dict['tvecs'][index],
