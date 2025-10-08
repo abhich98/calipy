@@ -43,7 +43,7 @@ class CalibrationContext(BaseContext):
         self.estimations_boards = {}  # session_id > cam_id > 'poses' > frm_idx > { rvec: vec3, tvec: vec3 }
                                     # session_id > cam_id > 'errors' > frm_idx > {max, med, mean}
 
-        self.other = {}
+        self._calibration_stats = None
 
     def get_available_subsets(self):
         """ Override available subsets to add calibration based subsets"""
@@ -86,7 +86,7 @@ class CalibrationContext(BaseContext):
 
         # Make sure we draw in color by converting the frame to color first if necessary
         if frame.ndim < 3 or frame.shape[2] == 1:
-            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
         # Draw detections
         detections = self.get_current_detections()
@@ -107,7 +107,6 @@ class CalibrationContext(BaseContext):
             estimation = self.get_current_estimations_single().get(cam_id, {}).get('poses', {})
             estimation = estimation.get(self.frame_index, None)
         else:
-            # TODO: check the order of transformations!
             calibration_cs = self.get_current_calibrations_multi().get('cs', None)
             estimation = self.get_current_estimations_boards().get(cam_id, {}).get('poses', {})
             estimation = estimation.get(self.frame_index, None)
@@ -323,40 +322,53 @@ class CalibrationContext(BaseContext):
 
         return stats
 
-    def get_calibration_stats(self):
-        stats = {}
+    def get_calibration_stats(self, reset=False):
 
-        det_stats = self.get_detection_stats()
+        if self._calibration_stats is None or reset:
+            # Retrieve all the error data for the session
+            stats = {}
 
-        # calibrations = self.get_current_calibrations_single()
-        estimations = self.get_current_estimations_single()
+            # calibrations = self.get_current_calibrations_single()
+            estimations = self.get_current_estimations_single()
 
-        calibrations_multi = self.get_current_calibrations_multi()
+            calibrations_multi = self.get_current_calibrations_multi()
+            estimations_board = self.get_current_estimations_boards()
+
+            for cam_id in self.get_current_cam_ids():
+
+                estimations_cam = estimations.get(cam_id, {})
+                count_est = len(estimations_cam.get('poses', {}))
+
+                estimations_board_cam = estimations_board.get(cam_id, {})
+                count_multicam_est = len(estimations_board_cam.get('poses', {}))
+
+                stats[cam_id] = {
+                    'single_estimations': count_est,
+                    'multicam_estimations': count_multicam_est,
+                }
+                if 'errors' in calibrations_multi.get(cam_id, {}):
+                    stats[cam_id].update({'system_errors': (calibrations_multi[cam_id]['errors']['mean'],
+                                                            calibrations_multi[cam_id]['errors']['med'],
+                                                            calibrations_multi[cam_id]['errors']['max'])
+                                          })
+
+            self._calibration_stats = stats
+
+        # Retrieve the error data for the frame
         estimations_board = self.get_current_estimations_boards()
-
-        for cam_id in self.get_current_cam_ids():
-
-            count_det = det_stats.get(cam_id, (0, 0))[0]
-            estimations_cam = estimations.get(cam_id, {})
-            count_est = len(estimations_cam.get('poses', {}))
-
-            stats[cam_id] = {
-                'detections': count_det,
-                'single_estimations': count_est,
-            }
-            if 'errors' in calibrations_multi.get(cam_id, {}):
-                stats[cam_id].update({'system_errors': (calibrations_multi[cam_id]['errors']['mean'],
-                                                        calibrations_multi[cam_id]['errors']['med'],
-                                                        calibrations_multi[cam_id]['errors']['max'])
-                                      })
-
+        for cam_id in self._calibration_stats:
+            self._calibration_stats[cam_id].pop('system_frame_errors', None)
             estimations_board_cam = estimations_board.get(cam_id, {})
             if self.frame_index in estimations_board_cam.get('errors', {}):
-                stats[cam_id].update({'system_frame_errors': (estimations_board_cam['errors'][self.frame_index]['mean'],
-                                                              estimations_board_cam['errors'][self.frame_index]['med'],
-                                                              estimations_board_cam['errors'][self.frame_index]['max'])
-                                      })
-        return stats
+                self._calibration_stats[cam_id].update({
+                    'system_frame_errors': (
+                    estimations_board_cam['errors'][self.frame_index]['mean'],
+                    estimations_board_cam['errors'][self.frame_index]['med'],
+                    estimations_board_cam['errors'][self.frame_index]['max']
+                )
+                })
+
+        return self._calibration_stats
 
     def plot_system_calibration_errors(self):
 

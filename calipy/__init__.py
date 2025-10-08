@@ -6,7 +6,7 @@ VERSION = "1.4.1"
 
 # Always at least provide VERSION
 try:
-    from . import core, ui, metaio, calib, detect
+    from . import core, ui, metaio, detect
     from .main import main
 except ImportError:
     pass

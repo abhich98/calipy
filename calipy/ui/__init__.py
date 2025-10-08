@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: LGPL-2.1
 
 from .CalibrationDock import CalibrationDock
-from .CamerasDock import CamerasDock
 from .DetectionDock import DetectionDock
 from .FrameWindow import FrameWindow
 from .MainWindow import MainWindow

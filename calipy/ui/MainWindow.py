@@ -41,7 +41,8 @@ class MainWindow(QMainWindow):
         result_menu = self.menuBar().addMenu("&Result")
         result_menu.addAction("&Load Calib", self.on_load_calib)
         result_menu.addSeparator()
-        result_menu.addAction("&Plot system calib. errors", self.context.plot_system_calibration_errors)
+        result_menu.addAction("&Show multicam errors table", self.on_show_error_table)
+        result_menu.addAction("&Plot multicam errors", self.context.plot_system_calibration_errors)
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction("&About", self.on_about)
@@ -130,29 +131,7 @@ class MainWindow(QMainWindow):
 
         # Update list of detections and calibrations (e.g., on session select)
         self.dock_detection.update_result()
-        self.dock_calibration.update_result()
-
-    @DeprecationWarning
-    def sync_subwindows_sources(self):
-        """" Show or hide subwindows based on available data """
-        # Reset frame index if now invalid
-        if self.context.get_current_frame() > self.context.get_length():
-            self.context.set_current_frame(0)
-
-        # Display windows based on available sources
-        for id, win in self.subwindows.items():
-            if self.context.get_frame(id) is None:
-                win.hide()
-            else:
-                win.show()
-
-        # Update timeline
-        self.update_timeline_dock()
-        # Reload subwindow
-        self.update_subwindows()
-        # Update list of detections and calibrations (e.g. on session select) TODO: Move somewhere better
-        self.dock_detection.update_result()
-        self.dock_calibration.update_result()
+        self.dock_calibration.update_result(reset=True)
 
     def update_subwindows(self):
         """ Update current frame on all subwindows """
@@ -275,10 +254,13 @@ class MainWindow(QMainWindow):
                                                    calibcam_cam_indexes=calibcam_cam_indexes)
 
             self.dock_detection.update_result()
-            self.dock_calibration.update_result()
+            self.dock_calibration.update_result(reset=True)
             self.dock_time.update_subsets()
 
             self.update_subwindows()
+
+    def on_show_error_table(self):
+        pass
 
     # Help menu
 

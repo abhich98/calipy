@@ -53,14 +53,14 @@ class CalibrationDock(QDockWidget):
         item.setFlags(Qt.ItemIsEnabled)
         self.table_calibrations.setItem(row, column, item)
 
-    def update_result(self):
-        stats = self.context.get_calibration_stats()
+    def update_result(self, reset=False):
+        stats = self.context.get_calibration_stats(reset=reset)
         self.table_calibrations.clearContents()
         self.table_calibrations.setRowCount(len(stats))
 
         for index, (id, result) in enumerate(stats.items()):
             self.set_calibration_table(index, 0, id)
-            self.set_calibration_table(index, 1, f"{result['single_estimations']} / {result['detections']}")
+            self.set_calibration_table(index, 1, f"{result['single_estimations']} / {result['multicam_estimations']}")
             self.set_calibration_table(index, 2, f"_ / _ / _")
             if 'system_errors' in result:
                 self.set_calibration_table(index, 3, "{:.2f} / {:.2f} / {:.2f}".format(*result['system_errors']))
