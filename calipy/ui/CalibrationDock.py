@@ -5,6 +5,7 @@ from PyQt5.Qt import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QComboBox, QLabel
 from PyQt5.QtWidgets import QWidget, QDockWidget, QVBoxLayout
+from pyqtgraph import TableWidget
 
 
 class CalibrationDock(QDockWidget):
@@ -72,3 +73,33 @@ class CalibrationDock(QDockWidget):
     def on_display_calib_change(self):
         self.context.select_display_calib(self.combo_display_calib.currentIndex())
         self.display_calib_changed.emit()
+
+
+class ErrorTableWindow(QWidget):
+    frame_select_signal = pyqtSignal(int)
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Multicam Calibration Errors")
+        layout = QVBoxLayout(self)
+        instruct_label = QLabel("INFO: Click on the frame number (in the 'frame' column) to go to the frame")
+
+        self.table = TableWidget()
+        self.table.setSortingEnabled(True)
+        self.table.cellClicked.connect(self.handle_cell_click)
+
+        layout.addWidget(instruct_label)
+        layout.addWidget(self.table)
+
+    def update_table(self, data: list[dict]):
+        self.table.setData(data)
+        data0 = data[0]
+        for i in range(len(data0)):
+            self.table.setSortMode(i, mode='value')
+        self.resize(400, 300)
+
+    def handle_cell_click(self, row, col):
+        val = self.table.item(row, col).text()
+        if col == 0:
+            self.frame_select_signal.emit(int(val))  # emit to main GUI
+

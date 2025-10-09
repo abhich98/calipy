@@ -6,11 +6,10 @@ from pathlib import Path, PureWindowsPath
 
 import cv2
 import numpy as np
+from calibcamlib import Camerasystem, Board, Detections
+from calibcamlib.yaml_helper import collection_to_array
 from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation as R  # noqa
-
-from calibcamlib.yaml_helper import collection_to_array
-from calibcamlib import Camerasystem, Board, Detections
 
 from calipy import VERSION
 from .BaseContext import BaseContext
@@ -37,11 +36,11 @@ class CalibrationContext(BaseContext):
         self.estimations_single = {}  # session_id > cam_id > 'poses' > frm_idx > { rvec: vec3, tvec: vec3 }
 
         self.calibrations_multi = {}  # session_id > 'cs': calibcamlib.CameraSystem
-                                    #  session_id > cam_id > 'errors' > {max, med, mean}
+        #  session_id > cam_id > 'errors' > {max, med, mean}
 
         # Assumed single source for each camera
         self.estimations_boards = {}  # session_id > cam_id > 'poses' > frm_idx > { rvec: vec3, tvec: vec3 }
-                                    # session_id > cam_id > 'errors' > frm_idx > {max, med, mean}
+        # session_id > cam_id > 'errors' > frm_idx > {max, med, mean}
 
         self._calibration_stats = None
 
@@ -57,7 +56,7 @@ class CalibrationContext(BaseContext):
         if not detections.is_empty():
             det_idxs = detections.to_array()['frame_idxs'].flatten()
             det_idxs = sorted(set(det_idxs))
-            det_idxs.remove(-1) # -1 is placed in the array instead of nan!
+            det_idxs.remove(-1)  # -1 is placed in the array instead of nan!
             subsets['Detections'] = det_idxs
 
         # Add estimations as subsets
@@ -115,7 +114,7 @@ class CalibrationContext(BaseContext):
             return frame
 
         coords_cam = R.from_rotvec(estimation['rvec']).apply(board_points) + estimation['tvec']
-        img_points =  calibration_cs.project(coords_cam, offsets=sensor_offset, cam_idx=cam_idx)
+        img_points = calibration_cs.project(coords_cam, offsets=sensor_offset, cam_idx=cam_idx)
         for point in img_points:
             if not np.all(np.isnan(point)):
                 cv2.drawMarker(frame, (int(point[0]), int(point[1])), (0, 0, 255))
@@ -158,7 +157,7 @@ class CalibrationContext(BaseContext):
         if not self.session:
             return []
 
-        def get_path(path:str):
+        def get_path(path: str):
             if "\\" in path:
                 return PureWindowsPath(path)
             else:
@@ -182,7 +181,7 @@ class CalibrationContext(BaseContext):
             calipy_rec_unique_names.append(get_path(rec.url).parts[unique_idx])
 
         calibcam_indexes = [calibcam_rec_unique_names.index(name) for name in calipy_rec_unique_names
-                                   if name in calibcam_rec_unique_names]
+                            if name in calibcam_rec_unique_names]
 
         return calibcam_indexes
 
@@ -201,8 +200,8 @@ class CalibrationContext(BaseContext):
             return
         # It is assumed that calibs are provided in the order of existing/loaded recordings
         assert len(calibrations_single) == len(self.session.recordings), (f"Total number of single camera "
-                                                                               f"calibrations: {len(calibrations_single)} "
-                                                                               "does not match available number of recordings!")
+                                                                          f"calibrations: {len(calibrations_single)} "
+                                                                          "does not match available number of recordings!")
         sess_id = self.session.id
         sin_calib_cs = Camerasystem.from_calibs(collection_to_array(calibrations_single))
         self.calibrations_single[sess_id] = {
@@ -221,7 +220,8 @@ class CalibrationContext(BaseContext):
                 'poses': poses,
             }
 
-    def load_calibration_multicam(self, calibcam_dict: dict, boards_dict: dict, calibcam_cam_indexes: list | None = None):
+    def load_calibration_multicam(self, calibcam_dict: dict, boards_dict: dict,
+                                  calibcam_cam_indexes: list | None = None):
         """ Read calibration info from calibcam dict, only if the corresponding recordings are already loaded """
         if not self.session:
             return
@@ -283,11 +283,11 @@ class CalibrationContext(BaseContext):
                     }
                     self.estimations_boards[sess_id][cam_id]['errors'][frm_idx] = {
                         'max': np.nanmax(
-                              final_err[calibcam_cam_idx, index]),
+                            final_err[calibcam_cam_idx, index]),
                         'med': np.nanmedian(
-                              final_err[calibcam_cam_idx, index]),
+                            final_err[calibcam_cam_idx, index]),
                         'mean': np.nanmean(
-                              final_err[calibcam_cam_idx, index])
+                            final_err[calibcam_cam_idx, index])
                     }
 
         # Multi camera calibration
@@ -313,7 +313,6 @@ class CalibrationContext(BaseContext):
             num_detected_markers = detections.get_n_detections_markers()
 
             for cam_id, ndr in zip(self.get_current_cam_ids(), num_detected_markers):
-
                 # Count detections and markers
                 detected_frames = np.sum(ndr > 0)
                 markers = np.sum(ndr)
@@ -362,17 +361,57 @@ class CalibrationContext(BaseContext):
             if self.frame_index in estimations_board_cam.get('errors', {}):
                 self._calibration_stats[cam_id].update({
                     'system_frame_errors': (
-                    estimations_board_cam['errors'][self.frame_index]['mean'],
-                    estimations_board_cam['errors'][self.frame_index]['med'],
-                    estimations_board_cam['errors'][self.frame_index]['max']
-                )
+                        estimations_board_cam['errors'][self.frame_index]['mean'],
+                        estimations_board_cam['errors'][self.frame_index]['med'],
+                        estimations_board_cam['errors'][self.frame_index]['max']
+                    )
                 })
 
         return self._calibration_stats
 
+    def get_errors_as_lods(self):
+        """ Returns frame wise errors as a list of dictionaries.
+            pyqtgraph TableWidget requires lods to show the table correctly."""
+        # TODO: fix problem here
+        estimations = self.get_current_estimations_boards()
+
+        errors_dict = {
+            'frame': []
+        }
+        header_keys = []
+        frames = set()
+
+        for cam_id, est_cam in estimations.items():
+            frames = frames.union(
+                set(est_cam.get('errors', {}).keys())
+            )
+            header_keys += [f'{cam_id}_mean',
+                            f'{cam_id}_med',
+                            f'{cam_id}_max']
+
+        frames = list(sorted(frames))
+        errors_dict['frame'] = frames
+        errors_dict.update({hk: [-1] * len(frames)
+                            for hk in header_keys})
+
+        for cam_id, est_cam in estimations.items():
+            for frame_idx in est_cam.get('errors', []):
+                err_frame = est_cam['errors'][frame_idx]
+                idx = frames.index(frame_idx)
+
+                errors_dict[f'{cam_id}_mean'][idx] = round(err_frame['mean'], 4)
+                errors_dict[f'{cam_id}_med'][idx] = round(err_frame['med'], 4)
+                errors_dict[f'{cam_id}_max'][idx] = round(err_frame['max'], 4)
+
+        # The dict of lists is converted to list of dicts, this is the correct format needed for pyqtgraph table widget
+        errors_dict = [dict(zip(errors_dict, t)) for t in zip(*errors_dict.values())]
+        return errors_dict
+
     def plot_system_calibration_errors(self):
 
         estimations_board = self.get_current_estimations_boards()
+        if not len(estimations_board):
+            return
 
         fig, axs = plt.subplots(len(estimations_board.keys()), sharex=True)
         if not isinstance(axs, np.ndarray):

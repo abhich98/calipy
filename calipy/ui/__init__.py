@@ -1,7 +1,7 @@
 # (c) 2019 MPI for Neurobiology of Behavior, Florian Franzen, Abhilash Cheekoti
 # SPDX-License-Identifier: LGPL-2.1
 
-from .CalibrationDock import CalibrationDock
+from .CalibrationDock import CalibrationDock, ErrorTableWindow
 from .DetectionDock import DetectionDock
 from .FrameWindow import FrameWindow
 from .MainWindow import MainWindow

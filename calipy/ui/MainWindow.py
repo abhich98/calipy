@@ -3,7 +3,6 @@
 
 import logging
 from pathlib import Path
-import yaml
 
 import numpy as np
 from PyQt5.Qt import Qt, QIcon
@@ -24,6 +23,8 @@ class MainWindow(QMainWindow):
         self.mdi = QMdiArea()
         self.setCentralWidget(self.mdi)
         self.subwindows = {}
+        self.error_table = None
+        self.table_thread = None
 
         # Setup menu bar
         session_menu = self.menuBar().addMenu("&File")
@@ -260,7 +261,12 @@ class MainWindow(QMainWindow):
             self.update_subwindows()
 
     def on_show_error_table(self):
-        pass
+        error_data = self.context.get_errors_as_lods()
+
+        self.error_table = ui.ErrorTableWindow()
+        self.error_table.update_table(error_data)
+        self.error_table.frame_select_signal.connect(self.dock_time.on_index_change)
+        self.error_table.show()
 
     # Help menu
 

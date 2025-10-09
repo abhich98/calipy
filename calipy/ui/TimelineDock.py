@@ -3,11 +3,15 @@
 
 import datetime
 from math import isinf
+import logging
 
 from PyQt5.Qt import Qt
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QDockWidget, QWidget, QHBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import QSlider, QComboBox, QSpinBox, QLabel
+
+
+logger = logging.getLogger(__name__)
 
 
 class TimelineDock(QDockWidget):
@@ -89,8 +93,9 @@ class TimelineDock(QDockWidget):
 
         self.update_index(index)
 
-    def update_index(self, value):
-        """ Update current frame labels in center """
+    def update_index(self, value: int):
+        """ Update current frame index in center """
+
         # To avoid the trigger of on_index_change again
         self._updating_dock = True
         self.slider.setValue(value)
@@ -116,14 +121,18 @@ class TimelineDock(QDockWidget):
 
     def on_index_change(self, value: int):
         if not self._updating_dock:
-            # Sync center ui
-            self.update_index(value)
-
             # Remap index if subset is set
             if self.current_subset is not None:
-                value = self.current_subset[value]
+                if value < len(self.current_subset):
+                    frame_idx = self.current_subset[value]
+                else:
+                    logger.log(logging.WARNING, f"{value} is out of range!")
+                    return
+            else:
+                frame_idx = value
 
-            self.context.set_current_frame(value)
+            self.update_index(value)   # Sync center ui
+            self.context.set_current_frame(frame_idx)
 
             # Update frame views
             self.time_index_changed.emit()
