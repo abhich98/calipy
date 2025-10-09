@@ -241,8 +241,8 @@ class CalibrationContext(BaseContext):
         frame_idxs_cams = boards_dict['frame_idxs']
 
         # Error from final calibration
-        final_err_shape = (*frame_idxs_cams.shape,
-                           len(Board(calibcam_board_params[0]).get_corner_ids()), 2)
+        final_err_shape = (*frame_idxs_cams.shape, -1, 2) # Setting -1 may not be a good idea here. Ideally, we should
+        # find each unique board and aggregate count all the corners.
         if 'fun_final' in boards_dict['info']:
             final_err = np.asarray(boards_dict['info']['fun_final']).reshape(final_err_shape)
             final_err = np.abs(final_err)
@@ -375,9 +375,6 @@ class CalibrationContext(BaseContext):
         # TODO: fix problem here
         estimations = self.get_current_estimations_boards()
 
-        errors_dict = {
-            'frame': []
-        }
         header_keys = []
         frames = set()
 
@@ -390,18 +387,26 @@ class CalibrationContext(BaseContext):
                             f'{cam_id}_max']
 
         frames = list(sorted(frames))
-        errors_dict['frame'] = frames
-        errors_dict.update({hk: [-1] * len(frames)
-                            for hk in header_keys})
+
+        errors_dict = {
+            'frame': frames,
+            'max': []
+        }
+        cam_errors_dict = {hk: [-1] * len(frames) for hk in header_keys}
 
         for cam_id, est_cam in estimations.items():
             for frame_idx in est_cam.get('errors', []):
                 err_frame = est_cam['errors'][frame_idx]
                 idx = frames.index(frame_idx)
 
-                errors_dict[f'{cam_id}_mean'][idx] = round(err_frame['mean'], 4)
-                errors_dict[f'{cam_id}_med'][idx] = round(err_frame['med'], 4)
-                errors_dict[f'{cam_id}_max'][idx] = round(err_frame['max'], 4)
+                cam_errors_dict[f'{cam_id}_mean'][idx] = round(err_frame['mean'], 4)
+                cam_errors_dict[f'{cam_id}_med'][idx] = round(err_frame['med'], 4)
+                cam_errors_dict[f'{cam_id}_max'][idx] = round(err_frame['max'], 4)
+
+        max_err = [val for key, val in cam_errors_dict.items()]
+        max_err = np.max(np.array(max_err), axis=0)
+        errors_dict['max'] = max_err.tolist()
+        errors_dict.update(cam_errors_dict)
 
         # The dict of lists is converted to list of dicts, this is the correct format needed for pyqtgraph table widget
         errors_dict = [dict(zip(errors_dict, t)) for t in zip(*errors_dict.values())]

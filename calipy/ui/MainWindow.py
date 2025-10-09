@@ -261,6 +261,7 @@ class MainWindow(QMainWindow):
             self.update_subwindows()
 
     def on_show_error_table(self):
+        """ MenuBar > Result > Show multicam errors table """
         error_data = self.context.get_errors_as_lods()
 
         self.error_table = ui.ErrorTableWindow()
