@@ -60,7 +60,7 @@ class CalibrationContext(BaseContext):
             subsets['Detections'] = det_idxs
 
         # Add estimations as subsets
-        estimations = self.get_current_estimations_single()
+        estimations = self.get_current_estimations_boards()
         est_idx = set()
 
         for cam_id in self.get_current_cam_ids():
@@ -68,11 +68,11 @@ class CalibrationContext(BaseContext):
             est_idx.update(estimations_cam.get('poses', {}).keys())
 
         if len(est_idx):
-            subsets['Estimations'] = sorted(est_idx)
+            subsets['Sys. Estimations'] = sorted(est_idx)
 
         return subsets
 
-    def get_frame(self, cam_id):
+    def get_frame(self, cam_id: str, print_errors=False):
         """ Override frame retrieval to draw calibration result """
         frame = super().get_frame(cam_id)
         if frame is None:
@@ -91,21 +91,25 @@ class CalibrationContext(BaseContext):
         detections = self.get_current_detections()
         if not detections.is_empty():
             detection = detections.get_frame_detections(self.frame_index, [cam_idx])
-            cv2.aruco.drawDetectedCornersCharuco(frame,
-                                                 np.asarray(detection, dtype=np.float32)
-                                                 - np.asarray(sensor_offset))
+            detection = np.asarray(detection, dtype=np.float32) - np.asarray(sensor_offset)
+            cv2.aruco.drawDetectedCornersCharuco(frame, detection)
+        else:
+            detection = None
 
         # Draw calibration result
         board = self.get_current_boards().get(cam_id, None)
         if board is None:
             return frame
+
         board_points = board.get_board_points()
 
         if self.display_calib_index == 0:
+            calib_type = "single"
             calibration_cs = self.get_current_calibrations_single().get('cs', None)
             estimation = self.get_current_estimations_single().get(cam_id, {}).get('poses', {})
             estimation = estimation.get(self.frame_index, None)
         else:
+            calib_type = "multi"
             calibration_cs = self.get_current_calibrations_multi().get('cs', None)
             estimation = self.get_current_estimations_boards().get(cam_id, {}).get('poses', {})
             estimation = estimation.get(self.frame_index, None)
@@ -118,6 +122,13 @@ class CalibrationContext(BaseContext):
         for point in img_points:
             if not np.all(np.isnan(point)):
                 cv2.drawMarker(frame, (int(point[0]), int(point[1])), (0, 0, 255))
+
+        if print_errors and detection is not None:
+            frame_errors = np.abs(detection[0, board.get_corner_ids()] - img_points)
+            logger.log(logging.INFO, f"Frame errors ({calib_type}) {cam_id} > {self.frame_index} -  "
+                                     f"mean: {np.nanmean(frame_errors):.3f}, "
+                                     f"med: {np.nanmedian(frame_errors):.3f}, "
+                                     f"max: {np.nanmax(frame_errors):.3f}")
 
         return frame
 
@@ -246,6 +257,7 @@ class CalibrationContext(BaseContext):
         if 'fun_final' in boards_dict['info']:
             final_err = np.asarray(boards_dict['info']['fun_final']).reshape(final_err_shape)
             final_err = np.abs(final_err)
+            final_err[final_err == 0] = np.nan
         else:
             final_err = np.empty(final_err_shape)
             final_err[:] = np.nan

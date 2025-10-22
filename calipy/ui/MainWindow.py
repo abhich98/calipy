@@ -190,12 +190,12 @@ class MainWindow(QMainWindow):
 
     # Result Menu Callbacks
 
-    def on_load_calib(self, file: str = None, load_recordings=False, load_detections=False, load_calibrations_single=False):
+    def on_load_calib(self, file: str = None, load_recordings=False, load_detections=True, load_calibrations_single=True):
         """ MenuBar > Result > Load Calib.
         Loads multicamera calibration from calibcam. Also supports other calibration results."""
 
         if file is None:
-            file = QFileDialog.getOpenFileName(self, "Load Calibcam Result", "", "Result File (*.yml, *.npy)")[0]
+            file = QFileDialog.getOpenFileName(self, "Load Calibcam Result", "", "Result File ( *.yml, *.npy)")[0]
 
         if file:
             file = Path(file)
